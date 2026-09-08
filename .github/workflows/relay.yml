@@ -1,0 +1,54 @@
+name: Synarch Bridge Relay
+
+# Runs one relay pass every 5 minutes: polls the Synarch BridgeSender on GenLayer for
+# pending GL->EVM messages (verdicts + refunds) and forwards them via the Synarch ZKsync
+# forwarder / LayerZero to Base Sepolia, where the SynarchEscrow settles.
+#
+# Frequency note: every-5-min is free and unlimited on a PUBLIC repo. On a PRIVATE repo
+# it would exceed the 2,000 free Actions minutes/month, so keep this repo public, or
+# change the cron below to '*/45 * * * *'.
+#
+# GitHub's native `schedule:` cron is throttled/unreliable, so the primary trigger is an
+# external cron-job.org job hitting the workflow_dispatch API every 5 minutes; `schedule`
+# stays as a backup.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+# Never run two relay passes at once (avoids double-sending the same message).
+concurrency:
+  group: synarch-relay
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Run relay tick
+        run: node dist/index.js --once
+        env:
+          # GenLayer -> EVM (verdict + refund messages to the Synarch escrow)
+          GENLAYER_RPC_URL: https://rpc-bradbury.genlayer.com
+          FORWARDER_NETWORK_RPC_URL: https://sepolia.era.zksync.dev
+          BRIDGE_SENDER_ADDRESS: '0x63df09A8D5542E212EB780B4cDb837fB05A2f1c3'
+          BRIDGE_FORWARDER_ADDRESS: '0xBCa1b17E4e392A7104f964a8426b7c3f945f288d'
+          # Dedicated testnet relayer wallet key (bot 0x8eeE3c), a GitHub Actions secret.
+          PRIVATE_KEY: ${{ secrets.RELAYER_PRIVATE_KEY }}
