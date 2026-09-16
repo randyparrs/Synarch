@@ -7,7 +7,7 @@
 
 import { ethers } from "ethers";
 import { createAccount, createClient } from "genlayer-js";
-import { testnetBradbury } from "genlayer-js/chains";
+import { studionet } from "genlayer-js/chains";
 import type { Address } from "genlayer-js/types";
 import { Options } from "@layerzerolabs/lz-v2-utilities";
 import {
@@ -50,9 +50,15 @@ export class GenLayerToEvmRelay {
     // Initialize GenLayer client
     const privateKey = getPrivateKey();
     const account = createAccount(`0x${privateKey.replace(/^0x/, "")}`);
+    // Synarch runs on a GenLayer Studio node, so the chain must be a Studio one
+    // (isStudio: true) and its id must match the node: the Studio API routes by chain id
+    // and answers a mismatched one with an HTML error page instead of JSON. studionet is
+    // 61999, Studio Next is 61997, so the id is overridden and kept configurable.
+    const genlayerChainId = Number(process.env.GENLAYER_CHAIN_ID || 61997);
     this.genLayerClient = createClient({
       chain: {
-        ...testnetBradbury,
+        ...studionet,
+        id: genlayerChainId,
         rpcUrls: {
           default: { http: [getGenlayerRpcUrl()] },
         },

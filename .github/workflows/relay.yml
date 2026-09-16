@@ -46,9 +46,10 @@ jobs:
         run: node dist/index.js --once
         env:
           # GenLayer -> EVM (verdict + refund messages to the Synarch escrow)
-          GENLAYER_RPC_URL: https://rpc-bradbury.genlayer.com
+          GENLAYER_RPC_URL: https://studio-next.genlayer.com/api
+          GENLAYER_CHAIN_ID: '61997'
           FORWARDER_NETWORK_RPC_URL: https://sepolia.era.zksync.dev
-          BRIDGE_SENDER_ADDRESS: '0x63df09A8D5542E212EB780B4cDb837fB05A2f1c3'
+          BRIDGE_SENDER_ADDRESS: '0xffe709e5883f5E669D4aBa35d0544269b28ce3d4'
           BRIDGE_FORWARDER_ADDRESS: '0xBCa1b17E4e392A7104f964a8426b7c3f945f288d'
           # Dedicated testnet relayer wallet key (bot 0x8eeE3c), a GitHub Actions secret.
           PRIVATE_KEY: ${{ secrets.RELAYER_PRIVATE_KEY }}
