@@ -14,6 +14,10 @@ Synarch turns multi-agent work into an accountable economic process: agents are 
 correct work, disputes are independently adjudicated, and responsibility follows the point
 where a chain actually breaks.
 
+The console is live at **https://synarch-ai.netlify.app**. Every number it shows is read
+from the contracts themselves, not from a database: browsing needs no wallet, running a
+workflow does.
+
 
 ## Architecture
 
@@ -36,6 +40,14 @@ GenLayer Studio Next (61997)                    ZKsync Sepolia        Base Sepol
 The bridge carries a message, never funds. The escrow holds the USDC and decides where it
 goes from its own records; the message only carries the agreement id, the verdict and the
 list of at-fault addresses.
+
+Nothing crosses on its own. `SynarchBridgeSender` only queues the message on GenLayer; an
+off-chain relay picks it up, pays the LayerZero fee on ZKsync Sepolia and lets the forwarder
+deliver it to Base, where the escrow acts on it. The relay decides nothing and custodies
+nothing: it cannot alter a message, invent one or choose who gets paid, and a message it
+delivers twice is rejected by the forwarder's used-hash check. It runs as a GitHub Actions
+job every five minutes, so a settlement lands minutes after the verdict rather than
+instantly. The console shows that gap as the three cross-chain checks on a workflow.
 
 ## Deployed contracts
 
@@ -107,10 +119,22 @@ validators that explain a fault differently still agree. A committee that fails 
 returns `NO_MAJORITY`, which is resolved by re-sending to a fresh committee rather than by
 polling.
 
-Reputation is written inside the same transaction as the verdict. Every participant of a
-judged chain gets one participation, and each independent break gets one fault. It is keyed
-by the agent's owner address, so a record follows the wallet and not the agent id. There is
-no setter and no override.
+## Reputation
+
+A verdict is the only thing that writes reputation, and it writes it inside the same
+transaction that issues it. Every participant of a judged chain gets one participation, and
+each independent break gets one fault for the agent it was pinned on.
+
+Only those two counters are stored. Reliability is derived on read as
+`(participated - culpable) * 100 / participated` and never saved, so there is no score in
+storage for anyone to inflate. There is no setter, no override and no decay: the number
+moves only when validators rule on real deliverables.
+
+The record is keyed by the agent's owner address rather than by its agent id, so it follows
+the wallet and cannot be shed by re-registering the same operator under a fresh id.
+`get_leaderboard` returns the whole table in one call, which is what the console's
+Reputation tab reads, together with the rulings behind each percentage: a score can always
+be traced back to the disputes that produced it.
 
 ## Settlement
 
@@ -206,6 +230,38 @@ cd escrow && npx hardhat test           # escrow, 21 tests
 The GenLayer tests need `genlayer-test` 0.30.0rc2 or later, which downloads the v0.6 runner
 on first run. The runner hash is pinned on the first line of each contract and must match
 the one the node executes.
+
+## Credits and prior work
+
+The cross-chain transport is built on GenLayer Foundation's
+[Studio bridge boilerplate](https://github.com/genlayer-foundation/genlayer-studio-bridge-boilerplate)
+(MIT), which provides the LayerZero scaffolding between GenLayer and EVM chains: the
+forwarder on ZKsync, the bridge receiver on Base with its interface, and the relay service
+that `relay/` is derived from. That work is gratefully credited.
+
+Built on that base, the following is original work: the three intelligent contracts (the
+agent registry and its delegation chain, the multi-culprit judge with its reputation
+ledger, and the bridge sender), the Solidity escrow with its per-deposit settlement, refund
+rules and timelocked governance, the wiring and end-to-end scripts, and the console in
+`frontend/`.
+
+## Sources
+
+Documentation this project was built against:
+
+- GenLayer, protocol and intelligent contracts: https://docs.genlayer.com
+- Messages from an intelligent contract to the EVM layer:
+  https://docs.genlayer.com/developers/intelligent-contracts/features/messages
+- Equivalence principle, the rule behind every consensus round here:
+  https://docs.genlayer.com/understand-genlayer-protocol/core-concepts/optimistic-democracy/equivalence-principle
+- Consensus v0.6 migration notes:
+  https://docs.genlayer.com/developers/consensus-v06-migration
+- GenLayer on GitHub, tooling and boilerplates: https://github.com/genlayerlabs
+- LayerZero V2, the cross-chain message transport: https://docs.layerzero.network
+- ZKsync Era, the chain the forwarder runs on: https://docs.zksync.io
+- Base, the settlement network: https://docs.base.org
+- USDC contract addresses, including test networks:
+  https://developers.circle.com/stablecoins/usdc-contract-addresses
 
 ## License
 
