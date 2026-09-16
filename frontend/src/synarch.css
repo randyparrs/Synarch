@@ -402,7 +402,7 @@ h1{font-family:var(--font-heading);font-weight:500;font-size:21px;margin:0 0 3px
 .syn-wf__id{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--color-neutral-100)}
 .syn-wf__net{flex:1;font-family:var(--font-mono);font-size:8.5px;letter-spacing:.12em;color:var(--color-neutral-600)}
 .syn-wf__body{padding:12px 13px 13px;display:flex;flex-direction:column;flex:1}
-.syn-wf__agreement{font-size:12.5px;line-height:1.55;color:var(--color-neutral-300);min-height:40px}
+.syn-wf__agreement{font-size:12.5px;line-height:1.55;color:var(--color-neutral-300);min-height:40px;flex:1 1 auto}
 .syn-wf__track{display:flex;gap:3px;margin:11px 0 0}
 .syn-wf__track i{flex:1 1 0;height:6px;border-radius:2px;background:#1b201e;border:1px solid #232825}
 .syn-wf__track i[data-state="done"]{background:linear-gradient(180deg,var(--color-accent-400),var(--color-accent-600));border-color:transparent}
