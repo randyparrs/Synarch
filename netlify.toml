@@ -1,0 +1,9 @@
+# The console lives in frontend/, so Netlify builds from there rather than from the
+# repository root, which holds the contracts, the scripts and the relay.
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
