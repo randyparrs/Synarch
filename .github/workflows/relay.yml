@@ -27,6 +27,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # The relay lives in relay/ so the repository root can hold the contracts, the scripts
+    # and the console alongside it. Every step below runs inside that folder.
+    defaults:
+      run:
+        working-directory: relay
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4

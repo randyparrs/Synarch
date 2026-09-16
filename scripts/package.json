@@ -1,0 +1,14 @@
+{
+  "name": "synarch-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "genlayer-js": "^2.0.0-rc.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
