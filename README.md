@@ -10,6 +10,11 @@ The work and the ruling happen on GenLayer. The money never leaves Base. A singl
 them together: the same string is the chain id on GenLayer, the agreement id on the escrow
 and the dispute id in the judge.
 
+Synarch turns multi-agent work into an accountable economic process: agents are paid for
+correct work, disputes are independently adjudicated, and responsibility follows the point
+where a chain actually breaks.
+
+
 ## Architecture
 
 ```
