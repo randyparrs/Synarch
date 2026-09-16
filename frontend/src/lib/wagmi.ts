@@ -1,4 +1,5 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
+import { fallback, http } from 'viem';
 import { injectedWallet } from '@rainbow-me/rainbowkit/wallets';
 import { studioDevnet } from 'genlayer-js/chains';
 import { baseSepolia } from 'wagmi/chains';
@@ -20,6 +21,22 @@ export const genlayerChain = {
   rpcUrls: { default: { http: [GENLAYER_RPC] } },
 };
 
+// Base Sepolia reads (escrow, USDC, settlement logs) used to go through a single public
+// endpoint, and this console polls: every open tab re-reads the agreement, its deposits and
+// the escrow balance every 20 seconds. One node answering that for every visitor at once is
+// the first thing to rate-limit when more than a couple of people open the site, and a 429
+// here shows up as an empty settlement hash rather than an error.
+// Two independent public nodes are declared instead: viem sends to the first and falls back
+// to the second when it errors or times out. Both were checked against the 4500-block
+// getLogs range this app actually uses, which is the constraint that rules a node out (a
+// free plan that caps the range cannot serve the ledger, however fast it answers).
+export const BASE_RPC_URLS = [
+  'https://sepolia.base.org',
+  'https://base-sepolia-rpc.publicnode.com',
+];
+
+export const baseTransport = fallback(BASE_RPC_URLS.map((url) => http(url)));
+
 // Browser-extension wallets only, by design. Synarch signs on a custom network (chain
 // 61997) that the wallet has to add before it can sign anything, which is a desktop
 // extension flow in practice. Every installed wallet announces itself through EIP-6963,
@@ -38,4 +55,8 @@ export const wagmiConfig = getDefaultConfig({
   projectId: WALLETCONNECT_PROJECT_ID,
   wallets: [{ groupName: 'Installed', wallets: [injectedWallet] }],
   chains: [genlayerChain, baseSepolia],
+  transports: {
+    [genlayerChain.id]: http(GENLAYER_RPC),
+    [baseSepolia.id]: baseTransport,
+  },
 });

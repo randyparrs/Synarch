@@ -1,6 +1,6 @@
 import { writeContract, waitForTransactionReceipt, switchChain, readContract } from '@wagmi/core';
-import { parseUnits, createPublicClient, http, parseAbiItem } from 'viem';
-import { wagmiConfig, baseSepolia } from './wagmi';
+import { parseUnits, createPublicClient, parseAbiItem } from 'viem';
+import { wagmiConfig, baseSepolia, baseTransport } from './wagmi';
 import { ESCROW_ADDRESS, USDC_ADDRESS, ESCROW_ABI, ERC20_ABI } from '../constants';
 
 const escrow = ESCROW_ADDRESS as `0x${string}`;
@@ -51,7 +51,9 @@ export function depositOutcome(
 // the deposits and transfers each share, so there is a single settlement hash for the whole
 // split, not one per agent. That transaction is sent by the bridge receiver, never by the
 // user, so it is not in this browser's tx store and has to be read from chain logs.
-const basePublic = createPublicClient({ transport: http('https://sepolia.base.org') });
+// `chain` is what carries the Multicall3 address, so it is required for the batched
+// reads below; the transport is the shared two-node fallback.
+const basePublic = createPublicClient({ chain: baseSepolia, transport: baseTransport });
 const SETTLED_EVENT = parseAbiItem(
   'event AgreementSettled(string indexed agreementId, string verdict, address[] culpableAgents, uint256 total)',
 );
@@ -70,13 +72,26 @@ const cacheKey = (chainId: string) => `synarch.settletx.${chainId}`;
 /** Transaction hash of the settlement (or refund) that paid out this agreement, read from
  *  Base logs. Cached once found: the hash is immutable, so it never needs a second search.
  *  Null when the agreement is older than the search span or the RPC refuses. */
+// An agreement that is still open has no settlement to find, but the sweep below cost 40
+// getLogs before concluding that. A miss is remembered for a minute too, so re-selecting a
+// workflow does not re-run the whole search against the public nodes.
+const missCache = new Map<string, number>();
+const MISS_TTL = 60_000;
+
 export async function getSettlementTx(chainId: string): Promise<`0x${string}` | null> {
   try {
     const cached = localStorage.getItem(cacheKey(chainId));
     if (cached) return cached as `0x${string}`;
   } catch { /* private mode: just search again */ }
 
+  const missedAt = missCache.get(chainId);
+  if (missedAt && Date.now() - missedAt < MISS_TTL) return null;
+
   try {
+    // One cheap read decides whether the expensive one is worth making at all.
+    const ag = await getAgreement(chainId);
+    if (!ag.exists || !ag.settled) { missCache.set(chainId, Date.now()); return null; }
+
     const latest = await basePublic.getBlockNumber();
     const funded = await fundedAt(chainId);
     const now = BigInt(Math.floor(Date.now() / 1000));
@@ -101,8 +116,10 @@ export async function getSettlementTx(chainId: string): Promise<`0x${string}` | 
       }
       from = to + 1n;
     }
+    missCache.set(chainId, Date.now());
     return null;
   } catch {
+    missCache.set(chainId, Date.now());
     return null; // an RPC hiccup must not break the ledger
   }
 }
@@ -123,19 +140,57 @@ export async function fetchAgentEarnings(maxAgreements = 20): Promise<AgentEarni
     totals.set(key, row);
   };
 
+  // Walking this one agreement at a time meant an agreement read plus a read per deposit,
+  // all sequential: around a hundred round trips every time the Reputation tab opened, which
+  // is exactly what a shared public node answers with a rate limit. It is now two batched
+  // requests: every agreement, then every deposit of the settled ones.
   try {
     const ids = (await getAgreementIds()).slice(-maxAgreements);
-    for (const id of ids) {
-      const ag = await getAgreement(id);
-      if (!ag.exists || !ag.settled) continue; // only money that actually moved
-      const deposits = await getDeposits(id, ag.depositCount);
-      for (const d of deposits) {
-        const out = depositOutcome(ag, d.beneficiary);
-        if (out.kind === 'paid') bump(d.beneficiary, 'earned', d.amount);
-        else if (out.kind === 'withheld') bump(d.beneficiary, 'withheld', d.amount);
-        else if (out.kind === 'refunded') bump(d.beneficiary, 'refunded', d.amount);
-      }
-    }
+    if (ids.length === 0) return [];
+
+    const agreements = (await basePublic.multicall({
+      contracts: ids.map((id) => ({
+        address: escrow, abi: ESCROW_ABI, functionName: 'getAgreement', args: [id],
+      })),
+      allowFailure: true,
+    })) as any[];
+
+    const settled = ids
+      .map((id, i) => ({ id, row: agreements[i] }))
+      .filter(({ row }) => row?.status === 'success' && row.result?.[0] && row.result?.[1])
+      .map(({ id, row }) => ({
+        id,
+        ag: {
+          exists: row.result[0], settled: row.result[1], client: row.result[2],
+          verdict: row.result[3], culpableAgents: (row.result[4] as string[]) ?? [],
+          total: row.result[5] as bigint, depositCount: Number(row.result[6]),
+        } as Agreement,
+      }));
+
+    // Every deposit of every settled agreement, flattened into one request. Each slot keeps
+    // its agreement so the outcome is resolved against the right verdict.
+    const slots = settled.flatMap(({ id, ag }) =>
+      Array.from({ length: ag.depositCount }, (_, i) => ({
+        ag,
+        call: { address: escrow, abi: ESCROW_ABI, functionName: 'getDeposit', args: [id, BigInt(i)] },
+      })));
+    if (slots.length === 0) return [];
+
+    const rows = (await basePublic.multicall({
+      contracts: slots.map((slot) => slot.call),
+      allowFailure: true,
+    })) as any[];
+
+    slots.forEach((slot, i) => {
+      const row = rows[i];
+      if (row?.status !== 'success') return;
+      const beneficiary = row.result[1] as string;
+      const amount = row.result[2] as bigint;
+      const out = depositOutcome(slot.ag, beneficiary);
+      if (out.kind === 'paid') bump(beneficiary, 'earned', amount);
+      else if (out.kind === 'withheld') bump(beneficiary, 'withheld', amount);
+      else if (out.kind === 'refunded') bump(beneficiary, 'refunded', amount);
+    });
   } catch { /* partial totals are still worth showing */ }
 
   return [...totals.values()];
@@ -161,10 +216,18 @@ export async function getDeposit(chainId: string, index: number): Promise<Deposi
   const r = (await readContract(wagmiConfig, { address: escrow, abi: ESCROW_ABI, functionName: 'getDeposit', args: [chainId, BigInt(index)], chainId: baseSepolia.id })) as any;
   return { depositor: r[0], beneficiary: r[1], amount: r[2] as bigint };
 }
+/** Every deposit of an agreement in ONE request. This is polled every 20 seconds by two
+ *  different views, so asking for the deposits one at a time meant four sequential round
+ *  trips per tick, per open tab; Multicall3 folds them into a single call. */
 export async function getDeposits(chainId: string, count: number): Promise<DepositRow[]> {
-  const out: DepositRow[] = [];
-  for (let i = 0; i < count; i++) out.push(await getDeposit(chainId, i));
-  return out;
+  if (count <= 0) return [];
+  const rows = (await basePublic.multicall({
+    contracts: Array.from({ length: count }, (_, i) => ({
+      address: escrow, abi: ESCROW_ABI, functionName: 'getDeposit', args: [chainId, BigInt(i)],
+    })),
+    allowFailure: false,
+  })) as any[];
+  return rows.map((r) => ({ depositor: r[0], beneficiary: r[1], amount: r[2] as bigint }));
 }
 export async function escrowBalance(): Promise<bigint> {
   return (await readContract(wagmiConfig, { address: escrow, abi: ESCROW_ABI, functionName: 'balance', chainId: baseSepolia.id })) as bigint;
