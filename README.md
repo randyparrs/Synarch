@@ -49,12 +49,14 @@ delivers twice is rejected by the forwarder's used-hash check. It runs as a GitH
 job every five minutes, so a settlement lands minutes after the verdict rather than
 instantly. The console shows that gap as the three cross-chain checks on a workflow.
 
-That job signs with a dedicated testnet wallet, kept as a GitHub Actions secret. It is a
-gas payer, not an authority. The message it carries is already fixed on GenLayer, the
-escrow acts only on messages from its timelocked `allowedSource`, and the forwarder rejects
-a hash it has already consumed. The worst this key can do is stop working, and a message
-that is never relayed simply leaves the deposits where they are, which is what the timeout
-refund exists for.
+That job signs with a dedicated testnet wallet, `0x8eeE3c0003280452f6cb785759f20C373994B61e`,
+whose key is a GitHub Actions secret. Its only privilege anywhere is `CALLER_ROLE` on the
+forwarder, which lets it hand a message over and nothing else. It is a gas payer, not an
+authority: the message it carries is already fixed on GenLayer, the escrow acts only on
+messages from its timelocked `allowedSource`, and the forwarder rejects a hash it has
+already consumed. The worst this key can do is stop working, and a message that is never
+relayed leaves the deposits exactly where they are, which is what the timeout refund
+exists for.
 
 ## Deployed contracts
 
