@@ -16,7 +16,7 @@
     "@layerzerolabs/lz-v2-utilities": "^3.0.61",
     "dotenv": "^16.4.5",
     "ethers": "^6.11.1",
-    "genlayer-js": "^1.2.0",
+    "genlayer-js": "^2.0.0-rc.1",
     "i": "^0.3.7",
     "node-cron": "^3.0.3"
   },

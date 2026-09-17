@@ -7,7 +7,7 @@
 
 import { ethers } from "ethers";
 import { createAccount, createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { studioDevnet } from "genlayer-js/chains";
 import type { Address } from "genlayer-js/types";
 import { Options } from "@layerzerolabs/lz-v2-utilities";
 import {
@@ -52,17 +52,22 @@ export class GenLayerToEvmRelay {
     const account = createAccount(`0x${privateKey.replace(/^0x/, "")}`);
     // Synarch runs on a GenLayer Studio node, so the chain must be a Studio one
     // (isStudio: true) and its id must match the node: the Studio API routes by chain id
-    // and answers a mismatched one with an HTML error page instead of JSON. studionet is
-    // 61999, Studio Next is 61997, so the id is overridden and kept configurable.
+    // and answers a mismatched one with an HTML error page instead of JSON.
+    // studioDevnet already carries Studio Next's id (61997) and the consensus metadata the
+    // node expects, which studionet (61999) does not; the id stays configurable anyway.
+    // This is the same chain and endpoint the console uses, and the pairing matters: an
+    // older SDK against this node answers a read with `execution failed`.
     const genlayerChainId = Number(process.env.GENLAYER_CHAIN_ID || 61997);
+    const genlayerRpcUrl = getGenlayerRpcUrl();
     this.genLayerClient = createClient({
       chain: {
-        ...studionet,
+        ...studioDevnet,
         id: genlayerChainId,
         rpcUrls: {
-          default: { http: [getGenlayerRpcUrl()] },
+          default: { http: [genlayerRpcUrl] },
         },
       },
+      endpoint: genlayerRpcUrl,
       account,
     });
 
