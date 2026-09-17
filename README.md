@@ -128,6 +128,15 @@ validators that explain a fault differently still agree. A committee that fails 
 returns `NO_MAJORITY`, which is resolved by re-sending to a fresh committee rather than by
 polling.
 
+**Where "reality" comes from.** A dispute can carry an `evidence_url`. When it does, the
+contract fetches that page with `gl.nondet.web.get` and tells validators to judge against
+it, above their own prior knowledge, capping how much of the page reaches the model. The
+source is fixed by the contract rather than searched for, because validators that each
+looked something up separately would read different pages and never converge. When no URL
+is given, the prompt falls back on stable public knowledge, which suits judging form,
+relevance and reasoning but is weaker for a fact that is actually contested. The console
+does not expose the field yet, so runs started from it use that fallback.
+
 ## Reputation
 
 A verdict is the only thing that writes reputation, and it writes it inside the same
